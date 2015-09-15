@@ -19,7 +19,8 @@ Package.onUse(function(api) {
     'mongo',
     'underscore',
     'percolate:synced-cron',
-    'momentjs:moment'
+    'momentjs:moment',
+    'nimble:restivus'
   ],['server']);
   api.export('DBSync');
 });

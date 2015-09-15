@@ -188,7 +188,7 @@ DBSync.fetch = function(  ){
   var self = this;
   _.each( self.collections(),function( key ){
     var settings = self.collectionSettings(key);
-    var indexUrl = self._settings.remote_root + settings.index.route
+    var indexUrl = self._settings.remote_root + settings.index.route;
 
     var last_updated = DBSync.getLastUpdate( key );
     var reqObject = {data: {updated_since: last_updated}};
@@ -286,6 +286,34 @@ DBSync._handleMissingExternalIds = function( key ){
   });
 };
 
+var Api = new Restivus({
+  useDefaultAuth: false,
+  prettyJson: true
+});
+DBSync._setupApi = function( key ){
+  var settings = this.collectionSettings( key );
+
+  // Generates: GET, POST on /api/items and GET, PUT, DELETE on
+  // /api/items/:id for the Items collection
+  Api.addCollection(settings.collection,
+    { excludedEndpoints: ["delete"] },
+    {
+      endpoints: {
+        put: {
+          action: function(){
+            console.log( this );
+          }
+        },
+        post: {
+          action: function(){
+            console.log( "here", this );
+          }
+        }
+      }
+    }
+  );
+};
+
 SyncedCron.add({
   name: DBSync._cronJobName,
   schedule: function(parser) {
@@ -304,6 +332,7 @@ DBSync.start = function(){
     // Adjust scope to keep it as DBSync
     self._handleSync( key );
 
+    self._setupApi( key );
 
     self._handleMissingExternalIds( key );
   });
