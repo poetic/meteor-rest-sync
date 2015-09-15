@@ -156,7 +156,6 @@ DBSync._handleFetch = function(err, resp, key ){
     _.each( docs, function(doc){
       try{
         var meteorVersion = self._convert( doc, settings.mapIn );
-        console.log( meteorVersion );
         if( settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
           settings.collection.direct.update({externalId: meteorVersion.externalId},meteorVersion);
         }else{
