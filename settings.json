@@ -1,0 +1,16 @@
+{
+  "cluster": {
+    "count": 2
+  },
+  "workers": {
+    "count": 10,
+    "monq": {
+    },
+    "cron": {
+      "log": false, 
+      "disable": false 
+    }
+  },
+  "remote_sync_root": "http://localhost:3000",
+  "remote_sync_fetch": "http://localhost:3000/articles.json"
+}
