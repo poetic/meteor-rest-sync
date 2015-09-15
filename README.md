@@ -16,16 +16,54 @@ We need some way to query all records that have been deleted since a certain tim
 - A external_id field is required on remote and meteor side.
 - Remote must provide a RESTful api.
 
-### 1 table to 1 collection
-
-One potentially important current limitation is a single collection on the remote equals a single collection locally.
-
 ## Config
 
 ### Define each collection to sync
+
+    var articleOut = {
+      "_id": {mapTo: "external_id"},
+      "title": {mapTo: "title"},
+      "author": {mapTo: "author"},
+      "externalId": {mapTo: "id"},
+      "deleted_at": {mapTo: "deleted_at"},
+    };
+
+    var articleIn = {
+      "id": {mapTo: "externalId"},
+      "title": {mapTo: "title"},
+      "author": {mapTo: "author"},
+      "deleted_at": {mapTo: "deleted_at"},
+      "updated_at": {mapTo: "updated_at"},
+    };
+
+    DBSync.addCollection({ 
+      collection: Articles, 
+      external_id_field: "id",
+      index: {
+        route: "/articles.json"
+      },
+      newDoc: {
+        route: "/articles.json",
+        field: "article"
+      },
+      updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
+        route: function( doc ){ return "/articles/" + doc.id + ".json"; },
+        field: "article"
+      },
+      mapOut: articleOut, 
+      mapIn: articleIn
+    });
+
 
 ### Start it
 
 This must be called to start syncing.  It must be called after all config is complete.
 
     DBSync.start();
+
+
+## Limitations
+
+### 1 table to 1 collection
+
+One potentially important current limitation is a single collection on the remote equals a single collection locally.
