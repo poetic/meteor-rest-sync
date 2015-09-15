@@ -2,7 +2,7 @@
 
 It polls the remote for all changes after a certain date.  It sends changes in realtime to specified endpoints on the remote.  If the realtime change request fails, it will retry a certain set amount of times.  Updates and inserts are done as full documents, rather than on a field by field basis.
 
-### Why External ID is needed on you're remote
+### Why External ID is needed on your remote
 
 ExternalID is required for the case where an insert was in the process when the application crashed or was shut down.  Without remote external ID we cannot know for certain if the remote system successfully inserted the document.
 
