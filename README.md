@@ -6,9 +6,20 @@ It polls the remote for all changes after a certain date.  It sends changes in r
 
 ExternalID is required for the case where an insert was in the process when the application crashed or was shut down.  Without remote external ID we cannot know for certain if the remote system successfully inserted the document.
 
-### Why Deleted_At is required
+#### Primarily realtime
+It is also necessary when the remote side sends us back an insert call when we sent it first.
+
+### Why Deleted_At is required - Primarily polling edge case
 
 We need some way to query all records that have been deleted since a certain time.  This isn't as important in the case where the remote is sending realtime changes.  It also helps with associated records.
+
+### Why we don't update last_updated if an error has occurred - Primary Polling edge case
+
+We avoid this for the rare case where a child record comes in before a parent record.  This catch's that case, and should cause the system to correct itself on the next poll.
+
+### Why fetch and retry are together - Primarily polling edge case
+
+If we are pulling data we have already recieved such as an error occuring during poll, then we need to be sure that we avoid overwriting any changes on the local side.  Passing the fetched data through the retry logic allows us to filter out records that have been updated on our side from the fetch, before updating the record on our side and overwriting local changes.  
 
 ## Basic Requirements
 
@@ -29,6 +40,9 @@ We need some way to query all records that have been deleted since a certain tim
     };
 
     var articleIn = {
+      "external_id": {mapTo: "_id", mapFunc: function(val){
+        return val.toString();
+      }},
       "id": {mapTo: "externalId"},
       "title": {mapTo: "title"},
       "author": {mapTo: "author"},
@@ -47,12 +61,56 @@ We need some way to query all records that have been deleted since a certain tim
         field: "article"
       },
       updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
-        route: function( doc ){ return "/articles/" + doc.id + ".json"; },
+        route: "/articles/:id.json",
         field: "article"
       },
       mapOut: articleOut, 
       mapIn: articleIn
     });
+
+    var commentOut = {
+      "_id": {mapTo: "external_id"},
+      "externalId": {mapTo: "id"},
+      "articleId": {mapTo: "article_id", mapFunc: function( val ){ return Articles.findOne({_id: val}).externalId; }},
+      "title": {mapTo: "title"},
+      "body": {mapTo: "body"},
+      "author": {mapTo: "author"},
+      "deleted_at": {mapTo: "deleted_at"},
+    };
+
+    var commentIn = {
+      "external_id": {mapTo: "_id", mapFunc: function(val){
+        return val.toString();
+      }},
+      "article_id": {mapTo: "articleId", mapFunc: function( val ){ 
+        if( val ){return Articles.findOne({externalId: val})._id;} }
+      },
+      "id": {mapTo: "externalId"},
+      "title": {mapTo: "title"},
+      "body": {mapTo: "body"},
+      "author": {mapTo: "author"},
+      "deleted_at": {mapTo: "deleted_at"},
+      "updated_at": {mapTo: "updated_at"},
+    };
+
+    DBSync.addCollection({ 
+      collection: Comments,
+      external_id_field: "id",
+      index: {
+        route: "/comments.json"
+      },
+      newDoc: {
+        route: "/comments.json",
+        field: "comment"
+      },
+      updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
+        route: "/comments/:id.json",
+        field: "comment"
+      },
+      mapOut: commentOut, 
+      mapIn: commentIn
+    });
+
 
 
 ### Start it
@@ -61,6 +119,9 @@ This must be called to start syncing.  It must be called after all config is com
 
     DBSync.start();
 
+### Rest Endpoints
+
+We also setup endpoints to restfully and in realtime update our local collections when the remote system changes. It uses 'nimble:restivus' under the hood.  Only POST and PUT are provided for insert and update respectively.  The mappings are used for these endpoints as well.  Currently the endpoint uri must point to the local (meteor), collection name, rather than the remote, but the document sent should be the remote version.
 
 ## Limitations
 

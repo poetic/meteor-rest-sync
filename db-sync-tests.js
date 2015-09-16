@@ -28,7 +28,7 @@ beforeAll(function(){
       field: "article"
     },
     updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
-      route: function( doc ){ return "/articles/" + doc.id + ".json"; },
+      route: "/articles/:id.json",
       field: "article"
     },
     mapOut: articleOut, 

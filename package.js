@@ -23,6 +23,7 @@ Package.onUse(function(api) {
     'nimble:restivus'
   ],['server']);
   api.export('DBSync');
+  api.export('Api');
 });
 
 Package.onTest(function(api) {

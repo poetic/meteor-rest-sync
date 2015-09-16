@@ -36,10 +36,11 @@
  * Migrate back away from global fetch call
  */
 
-var RAILS_ROOT = Meteor.settings.remote_sync_root;
-var MAX_RETRIES = 10;
-var CollectionOrder = ["articles", "comments"];
-
+/*
+ * Intertwine retry and fetch logic, to avoid overwrite for spceific case
+ * Setup default for externalId inbound
+ * Auth
+ */
 
 DBSync = {};
 
@@ -105,7 +106,8 @@ DBSync._handleUpdate = function( key, doc, callback ){
     callback( "No external ID found on record" );
   }else{
     var field = settings.updateDoc.field;
-    var route = this._settings.remote_root + settings.updateDoc.route( doc );
+    var route = this._settings.remote_root + 
+      settings.updateDoc.route.replace(":id", remoteDoc[settings.external_id_field] );
 
     var params = {};
     params[field] = _.omit(remoteDoc,"id");
@@ -156,13 +158,28 @@ DBSync._handleFetch = function(err, resp, key ){
     _.each( docs, function(doc){
       try{
         var meteorVersion = self._convert( doc, settings.mapIn );
-        if( settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
-          settings.collection.direct.update({externalId: meteorVersion.externalId},meteorVersion);
-        }else{
-          settings.collection.direct.insert(meteorVersion);
+
+        /*
+         * If an error occured the last time we sent an update for
+         * the specific document.  Then compare timestamps, and prefer 
+         * the last updated.
+         */
+        var errors = self._errors.find({collection: key, id: meteorVersion._id}).count() > 0;
+        var lastUpdateLocal = true;
+        if( errors ){
+          var updated = settings.collection.findOne({'_id': meteorVersion._id}).updated_at;
+          lastUpdateLocal = moment(updated).isAfter( meteorVersion.updated_at );
         }
-        if( !last_update || moment( meteorVersion.updated_at ).isAfter( last_update ) ){
-          last_update = moment( meteorVersion.updated_at ); 
+        
+        if( !lastUpdateLocal ){
+          if( settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
+            settings.collection.direct.update({externalId: meteorVersion.externalId},meteorVersion);
+          }else{
+            settings.collection.direct.insert(meteorVersion);
+          }
+          if( !last_update || moment( meteorVersion.updated_at ).isAfter( last_update ) ){
+            last_update = moment( meteorVersion.updated_at ); 
+          }
         }
       }catch(e){
         error_count++;
@@ -200,48 +217,59 @@ DBSync.fetch = function(  ){
 
 DBSync.retryErrors = function( callback ){
   var self = this;
-  self._errors.find({'type': "insert", "retries": {$lte: MAX_RETRIES}}).forEach(function(errRecord){ 
-    var settings = self.collectionSettings(errRecord.collection);
-    var doc  = settings.collection.findOne({_id: errRecord.id});
-    if( doc ){
-      self._handleInsert( errRecord.collection, doc,function(err,resp){
-        if( !err ){
-          console.log( "retry success" );
-          self._errors.remove({id: errRecord.id, collection: errRecord.collection});
-          settings.collection.direct.update({_id: errRecord.id},{$set: {externalId: resp.data.id}});
-        }else{
-          self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
-          console.log( "retry fail" );
-        }
-      });
-    }else{
-      self._errors.remove({_id: errRecord._id,type: "insert"});
-      console.log( "Doc that failed to insert on rails, no longer exists in meteor" );
-    }
-  });
-  
-  self._errors.find({'type': "updates", "retries": {$lte: MAX_RETRIES}}).forEach(function(errRecord){ 
-    var settings = self.collectionSettings(errRecord.collection);
-    var doc  = settings.collection.findOne({_id: errRecord.id});
-    if( doc ){
-      if( !doc.externalId ){
-        self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
-      }else{
-        self._handleUpdates( errRecord.collection, doc,function(err,resp){
+  self._errors.find(
+    {'type': "insert", "retries": {$lte: self._settings.max_retries}}
+  ).forEach(
+      function(errRecord){ 
+      var settings = self.collectionSettings(errRecord.collection);
+      var doc  = settings.collection.findOne({_id: errRecord.id});
+      if( doc ){
+        self._handleInsert( errRecord.collection, doc,function(err,resp){
           if( !err ){
             console.log( "retry success" );
-            self._errors.remove({_id: errRecord._id});
+            self._errors.remove({id: errRecord.id, collection: errRecord.collection});
+            settings.collection.direct.update({_id: errRecord.id},{$set: {externalId: resp.data.id}});
           }else{
             self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
             console.log( "retry fail" );
           }
         });
+      }else{
+        // We remove all errors related to that record 
+        // Since inserts and updates are document level, correctly processing 1
+        // will result in all other errors related to that record also being resolved.
+        self._errors.remove({_id: errRecord._id,type: "insert", collection: errRecord.collection});
+        console.log( "Doc that failed to insert on rails, no longer exists in meteor" );
       }
-    }else{
-      self._errors.remove({_id: errRecord._id,type: "insert"});
-      console.log( "Doc that failed to insert on rails, no longer exists in meteor. This case shouldn't be possible due to using deleted_at." );
     }
-  });
+  );
+  
+  self._errors.find(
+    {'type': "updates", "retries": {$lte: self._settings.max_retries}}
+  ).forEach(
+    function(errRecord){ 
+      var settings = self.collectionSettings(errRecord.collection);
+      var doc  = settings.collection.findOne({_id: errRecord.id});
+      if( doc ){
+        if( !doc.externalId ){
+          self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
+        }else{
+          self._handleUpdates( errRecord.collection, doc,function(err,resp){
+            if( !err ){
+              console.log( "retry success" );
+              self._errors.remove({_id: errRecord._id});
+            }else{
+              self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
+              console.log( "retry fail" );
+            }
+          });
+        }
+      }else{
+        self._errors.remove({_id: errRecord._id,type: "insert"});
+        console.log( "Doc that failed to insert on rails, no longer exists in meteor. This case shouldn't be possible due to using deleted_at." );
+      }
+    }
+  );
   
   if( callback ){
     callback();
@@ -286,27 +314,44 @@ DBSync._handleMissingExternalIds = function( key ){
   });
 };
 
-var Api = new Restivus({
+DBSync._api = new Restivus({
   useDefaultAuth: false,
-  prettyJson: true
+  prettyJson: true,
+  apiPath: "rest-sync"
 });
 DBSync._setupApi = function( key ){
+  var self = this;
   var settings = this.collectionSettings( key );
 
-  // Generates: GET, POST on /api/items and GET, PUT, DELETE on
-  // /api/items/:id for the Items collection
-  Api.addCollection(settings.collection,
-    { excludedEndpoints: ["delete"] },
-    {
+  /*
+   * Wasn't able to setup using Api.addRoute.  
+   * It seems to not successfully catch requests when setup that way.
+   */
+
+  DBSync._api.addCollection(settings.collection,
+    { excludedEndpoints: ["delete","getAll", "get"],
       endpoints: {
         put: {
           action: function(){
-            console.log( this );
+            var req = this;
+            var meteorDoc = self._convert(req.bodyParams, settings.mapIn);
+            settings.collection.direct.update( {_id: meteorDoc._id}, {$set: meteorDoc} );
+            return settings.collection.findOne({_id: meteorDoc._id});
           }
         },
         post: {
           action: function(){
-            console.log( "here", this );
+            var req = this;
+            var meteorDoc = self._convert( req.bodyParams, settings.mapIn );
+            // Custom upsert, collection hooks don't allow direct access for upsert for some reason
+            var id;
+            if( settings.collection.findOne({_id: meteorDoc._id}) ){
+              settings.collection.direct.update({_id: meteorDoc._id},meteorDoc );
+              id = meteorDoc._id;
+            }else{
+              id = settings.collection.direct.insert( meteorDoc );
+            }
+            return settings.collection.findOne({_id: id});
           }
         }
       }
@@ -328,10 +373,11 @@ SyncedCron.add({
 
 DBSync.start = function(){
   var self = this;
+
   _.each( Object.keys(this._settings.collections), function( key ){
     // Adjust scope to keep it as DBSync
     self._handleSync( key );
-
+    
     self._setupApi( key );
 
     self._handleMissingExternalIds( key );
