@@ -154,6 +154,7 @@ DBSync._handleFetch = function(err, resp, key ){
               _.omit(meteorVersion,"_id")
             );
           }else{
+            console.log( typeof(meteorVersion.externalId) );
             settings.collection.direct.insert(meteorVersion);
           }
           if( !last_update || moment( meteorVersion.updated_at ).isAfter( last_update ) ){
