@@ -1,45 +1,17 @@
 /*
- * Handle case where update occurs before insert gets the remote ID back, less likely to occur now.
- * Handle case where restart occurs during a remote insert
- * Hnadle Case 
- *   to_datetime truncates, causing off by one, resulting in overwrite of recent meteor changes
- *
- *
  * Discussion
  *   Their timestamps need to be generated in DB! Lack of strict chronologic ordering from their files results in missed data.
- *   ExternalID vs nothing in their system.  Specifically, crash during insert response
- *   Case where our table isn't 1 -> 1 with their tables
- *
- *
- * Change to transform model on outbound inbound?
- * Function with doc as argument for endpoints?
- * Need some insulation for their col name -> our col name
  *
  * Technical Debt
- *   Remove dependency on comments and articles
- *   Move config outside
  *   Setup CI
  *   Add more tests
  *   Migrate to differential:worker from percolate:synced-cron
  *   Add indexes
- *   configuration api
  */
 
 /*
- * Updated since
- *
- * Completly rest based, sync is only avaliable if we can 
- * Leave polling code, 
- * Add logs to polling portion as well.
- * Log instead of keeping errors
- * restivus with outbound and inbound matching
- * Migrate back away from global fetch call
- */
-
-/*
- * Intertwine retry and fetch logic, to avoid overwrite for spceific case
- * Setup default for externalId inbound
- * Auth
+ * Setup default for externalId inbound, with normalization
+ * add behaves as syncable for simple-schema
  */
 
 DBSync = {};
@@ -112,6 +84,7 @@ DBSync._handleUpdate = function( key, doc, callback ){
     var params = {};
     params[field] = _.omit(remoteDoc,"id");
     var reqObject = {data: params};
+    console.log( "Putting via http" );
     HTTP.put( route, reqObject, callback);
   }
 };
@@ -126,7 +99,7 @@ DBSync._handleSync = function( key ){
         self._errors.insert({'id': doc._id, type: "insert", collection: key, retries: 0});
       }else{
         // Don't propogate (trigger hooks) this change
-        settings.collection.direct.update({_id: doc._id},{$set: {externalId: resp.data.id}});
+        settings.collection.direct.update({_id: doc._id},{$set: {externalId: resp.data.id.toString()}});
       }
     });
   });
@@ -165,15 +138,21 @@ DBSync._handleFetch = function(err, resp, key ){
          * the last updated.
          */
         var errors = self._errors.find({collection: key, id: meteorVersion._id}).count() > 0;
-        var lastUpdateLocal = true;
+        var lastUpdateLocal;
         if( errors ){
           var updated = settings.collection.findOne({'_id': meteorVersion._id}).updated_at;
           lastUpdateLocal = moment(updated).isAfter( meteorVersion.updated_at );
         }
-        
+
         if( !lastUpdateLocal ){
-          if( settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
-            settings.collection.direct.update({externalId: meteorVersion.externalId},meteorVersion);
+          if( 
+              settings.collection.findOne( {externalId: meteorVersion.externalId} ) ||
+              settings.collection.findOne( {_id: meteorVersion._id} )
+          ){
+            settings.collection.direct.update(
+              {externalId: meteorVersion.externalId},
+              _.omit(meteorVersion,"_id")
+            );
           }else{
             settings.collection.direct.insert(meteorVersion);
           }
@@ -335,8 +314,15 @@ DBSync._setupApi = function( key ){
           action: function(){
             var req = this;
             var meteorDoc = self._convert(req.bodyParams, settings.mapIn);
-            settings.collection.direct.update( {_id: meteorDoc._id}, {$set: meteorDoc} );
-            return settings.collection.findOne({_id: meteorDoc._id});
+
+            // It should be one of the two cases
+            if( meteorDoc._id ){
+              settings.collection.direct.update({_id: meteorDoc._id}, {$set: meteorDoc} );
+              return settings.collection.findOne({_id: meteorDoc._id});
+            }else{
+              settings.collection.direct.update({externalId: meteorDoc.externalId}, {$set: meteorDoc} );
+              return settings.collection.findOne({externalId: meteorDoc.externalId});
+            }
           }
         },
         post: {
@@ -344,14 +330,18 @@ DBSync._setupApi = function( key ){
             var req = this;
             var meteorDoc = self._convert( req.bodyParams, settings.mapIn );
             // Custom upsert, collection hooks don't allow direct access for upsert for some reason
+            
+            console.log( meteorDoc ); 
             var id;
             if( settings.collection.findOne({_id: meteorDoc._id}) ){
               settings.collection.direct.update({_id: meteorDoc._id},meteorDoc );
               id = meteorDoc._id;
+              return settings.collection.findOne({_id: id});
             }else{
               id = settings.collection.direct.insert( meteorDoc );
+              var doc = settings.collection.findOne({externalId: meteorDoc.externalId});
+              return doc;
             }
-            return settings.collection.findOne({_id: id});
           }
         }
       }

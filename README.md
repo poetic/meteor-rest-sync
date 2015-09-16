@@ -21,6 +21,10 @@ We avoid this for the rare case where a child record comes in before a parent re
 
 If we are pulling data we have already recieved such as an error occuring during poll, then we need to be sure that we avoid overwriting any changes on the local side.  Passing the fetched data through the retry logic allows us to filter out records that have been updated on our side from the fetch, before updating the record on our side and overwriting local changes.  
 
+### External ID Normalization
+
+We normalize all external IDS to string.
+
 ## Basic Requirements
 
 - A deleted_at field is required on remote and meteor side.
