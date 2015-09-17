@@ -1,25 +1,26 @@
 beforeAll(function(){
+  DBSync.configure({
+    remote_root: "http://localhost:3000",
+    max_retries: 10,
+    poll_length: 'every 1 mins'
+  });
+
   var articleOut = {
-    "_id": {mapTo: "external_id"},
     "title": {mapTo: "title"},
     "author": {mapTo: "author"},
-    "externalId": {mapTo: "id"},
-    "deleted_at": {mapTo: "deleted_at"},
   };
 
   var articleIn = {
-    "id": {mapTo: "externalId"},
     "title": {mapTo: "title"},
     "author": {mapTo: "author"},
-    "deleted_at": {mapTo: "deleted_at"},
-    "updated_at": {mapTo: "updated_at"},
   };
-
+  
   Articles = new Mongo.Collection('articles');
   Key = "articles";
+
   DBSync.addCollection({ 
-    collection: Articles,
-    external_id_field: "id",
+    collection: Articles, 
+    remote_external_id_field: "id",
     index: {
       route: "/articles.json"
     },
@@ -27,18 +28,12 @@ beforeAll(function(){
       route: "/articles.json",
       field: "article"
     },
-    updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
+    updateDoc: { 
       route: "/articles/:id.json",
       field: "article"
     },
     mapOut: articleOut, 
     mapIn: articleIn
-  });
-
-  DBSync.configure({
-    remote_root: "http://localhost:3000",
-    max_retries: 10,
-    poll_length: 'every 1 mins'
   });
 
   DBSync.start();

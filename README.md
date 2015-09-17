@@ -8,15 +8,16 @@
 
 ### Base Config
 
+First call 
 
-DBSync.configure({
-  remote_root: Meteor.settings.remote_sync_root,
-  max_retries: 10,
-  poll_length: 'every 1 days',
-  restivus_options: { // Passed throuw to restivus
-    use_default_auth: false
-  } 
-});
+    DBSync.configure({
+      remote_root: Meteor.settings.remote_sync_root,
+      max_retries: 10,
+      poll_length: 'every 1 days',   // Later.js text
+      restivus_options: { // Passed throuw to restivus
+        use_default_auth: false
+      } 
+    });
 
 ### Define each collection to sync
 
@@ -55,7 +56,10 @@ DBSync.configure({
     });
 
     var commentOut = {
-      "articleId": {mapTo: "article_id", mapFunc: function( val ){ return Articles.findOne({_id: val}).externalId; }},
+      "article_id": {mapTo: "articleId", mapFunc: function( val ){ 
+        // Always treat external ID's as string
+        if( val ){ return Articles.findOne({externalId: val.toString()})._id;}  
+      }},
       "title": {mapTo: "title"},
       "body": {mapTo: "body"},
       "author": {mapTo: "author"},
@@ -80,7 +84,7 @@ DBSync.configure({
         route: "/comments.json",
         field: "comment"
       },
-      updateDoc: { // For the moment we assume the route simply has the external Id as a suffix
+      updateDoc: { 
         route: "/comments/:id.json",
         field: "comment"
       },

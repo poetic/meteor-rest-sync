@@ -5,24 +5,20 @@
  * Technical Debt
  *   Setup CI
  *   Add more tests
+ *   Refactor
  *   Migrate to differential:worker from percolate:synced-cron
  *   Add indexes
+ *   Determine cause of remote problems
+ *   Add ability to have some overlap in timestamps
+ *   Allow configuration of inbound routes
+ *
+ * Packaging
+ *   Add tech demo to package after stripping out nosh-pit name etc.
  */
 
-/*
- * Setup default for externalId inbound, with normalization
- * add behaves as syncable for simple-schema
- *
- * allow override of rest api?
- *
- * Add some default configuration stuff
- *
- * Merge upserts code?  Can these be more efficient?
- */
 
 DBSync = {};
 
-DBSync._settings = {collections:{}};
 DBSync._errors = new Mongo.Collection("syncErrors");
 DBSync._cronJobName = 'Poll remote for inserts and updates and retry inserts, updates, and deletes.';
 
@@ -35,11 +31,15 @@ DBSync.getLastUpdate = function(key){
 };
 
 DBSync.configure = function( config ){
-  this._settings =_.extend( this._settings, config );
-  
-  this._settings.restivus_options = _.defaults(config.restivus_options,{
+  this._settings = _.defaults({},config,{
+    collections:{}
+  });
+ 
+  this._settings.restivus_options = _.defaults({},config.restivus_options,{
     apiPath: "rest-sync"
   });
+
+  console.log( 'Settings', this._settings );
 };
 
 DBSync.addCollection = function( config ){
@@ -54,14 +54,13 @@ DBSync.addCollection = function( config ){
   });
   
   this._settings.collections[ config.collection._name ].mapIn = _.defaults(config.mapIn,{
-    "external_id": {mapTo: "_id", mapFunc: function(val){
+    "external_id": {mapTo: "_id"},
+    "id": {mapTo: "externalId", mapFunc: function(val){
       return val.toString();
     }},
-    "id": {mapTo: "externalId"},
     "deleted_at": {mapTo: "deleted_at"},
     "updated_at": {mapTo: "updated_at"},
   });
-  console.log( config.mapIn );
 };
 
 DBSync.collections = function( ){
@@ -111,7 +110,6 @@ DBSync._handleUpdate = function( key, doc, callback ){
     var params = {};
     params[field] = _.omit(remoteDoc,"id");
     var reqObject = {data: params};
-    console.log( "Putting via http" );
     HTTP.put( route, reqObject, callback);
   }
 };
@@ -120,7 +118,6 @@ DBSync._handleSync = function( key ){
   var self = this;
   var settings = self.collectionSettings(key);
   settings.collection.after.insert(function (userId, doc) {
-    console.log( 'Handling meteor insert' );
     self._handleInsert( key, doc, function(err, resp){
       if( err ){
         console.error( "Rails Insert Failed: " + err );
@@ -133,7 +130,6 @@ DBSync._handleSync = function( key ){
   });
   
   settings.collection.after.update(function (userId, doc, fieldNames, modifier, options) {
-    console.log( 'Handling meteor update' );
     self._handleUpdate( key, doc, function(err, resp){
       if( err ){
         console.error( "Rails Update Failed", err );
@@ -175,9 +171,9 @@ DBSync._handleFetch = function(err, resp, key ){
         }
 
         if( !lastUpdateLocal ){
-          if(settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
+          if(settings.collection.findOne( {externalId: meteorVersion.externalId.toString()} ) ){
             settings.collection.direct.update(
-              {externalId: meteorVersion.externalId},
+              {externalId: meteorVersion.externalId.toString()},
               _.omit(meteorVersion,"_id")
             );
           }else if( settings.collection.findOne( {_id: meteorVersion._id} ) ){
@@ -186,7 +182,6 @@ DBSync._handleFetch = function(err, resp, key ){
               _.omit(meteorVersion,"_id")
             );
           }else{
-            console.log( typeof(meteorVersion.externalId) );
             settings.collection.direct.insert(meteorVersion);
           }
           if( !last_update || moment( meteorVersion.updated_at ).isAfter( last_update ) ){
@@ -238,12 +233,11 @@ DBSync.retryErrors = function( callback ){
       if( doc ){
         self._handleInsert( errRecord.collection, doc,function(err,resp){
           if( !err ){
-            console.log( "retry success" );
             self._errors.remove({id: errRecord.id, collection: errRecord.collection});
             settings.collection.direct.update({_id: errRecord.id},{$set: {externalId: resp.data.id}});
           }else{
             self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
-            console.log( "retry fail" );
+            console.log( "Remote insert retry fail" );
           }
         });
       }else{
@@ -268,11 +262,10 @@ DBSync.retryErrors = function( callback ){
         }else{
           self._handleUpdates( errRecord.collection, doc,function(err,resp){
             if( !err ){
-              console.log( "retry success" );
               self._errors.remove({_id: errRecord._id});
             }else{
               self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
-              console.log( "retry fail" );
+              console.error( "Remote update retry fail" );
             }
           });
         }
@@ -318,7 +311,7 @@ DBSync._handleMissingExternalIds = function( key ){
         }else{
           settings.collection.update(
             {_id: doc._id},
-            {externalId: docs[0][settings.remote_external_id_field]}
+            {externalId: docs[0][settings.remote_external_id_field.toString()]}
           );
         }
       }
@@ -326,9 +319,7 @@ DBSync._handleMissingExternalIds = function( key ){
   });
 };
 
-DBSync._api = new Restivus(_.defaults({
-  apiPath: "rest-sync"
-},DBSync._settings.restivus_options));
+
 DBSync._setupApi = function( key ){
   var self = this;
   var settings = this.collectionSettings( key );
@@ -393,8 +384,9 @@ SyncedCron.add({
 });
 
 DBSync.start = function(){
+  DBSync._api = new Restivus(DBSync._settings.restivus_options);
+  
   var self = this;
-
   _.each( Object.keys(this._settings.collections), function( key ){
     // Adjust scope to keep it as DBSync
     self._handleSync( key );
