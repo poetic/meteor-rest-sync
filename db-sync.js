@@ -120,6 +120,7 @@ DBSync._handleSync = function( key ){
   var self = this;
   var settings = self.collectionSettings(key);
   settings.collection.after.insert(function (userId, doc) {
+    console.log( 'Handling meteor insert' );
     self._handleInsert( key, doc, function(err, resp){
       if( err ){
         console.error( "Rails Insert Failed: " + err );
@@ -132,6 +133,7 @@ DBSync._handleSync = function( key ){
   });
   
   settings.collection.after.update(function (userId, doc, fieldNames, modifier, options) {
+    console.log( 'Handling meteor update' );
     self._handleUpdate( key, doc, function(err, resp){
       if( err ){
         console.error( "Rails Update Failed", err );
@@ -169,15 +171,18 @@ DBSync._handleFetch = function(err, resp, key ){
         if( errors ){
           var updated = settings.collection.findOne({'_id': meteorVersion._id}).updated_at;
           lastUpdateLocal = moment(updated).isAfter( meteorVersion.updated_at );
+          console.error( "Conflicts found during fetch, most recent version used" );
         }
 
         if( !lastUpdateLocal ){
-          if( 
-              settings.collection.findOne( {externalId: meteorVersion.externalId} ) ||
-              settings.collection.findOne( {_id: meteorVersion._id} )
-          ){
+          if(settings.collection.findOne( {externalId: meteorVersion.externalId} ) ){
             settings.collection.direct.update(
               {externalId: meteorVersion.externalId},
+              _.omit(meteorVersion,"_id")
+            );
+          }else if( settings.collection.findOne( {_id: meteorVersion._id} ) ){
+            settings.collection.direct.update(
+              {_id: meteorVersion._id},
               _.omit(meteorVersion,"_id")
             );
           }else{
