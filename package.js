@@ -1,10 +1,10 @@
 Package.describe({
   name: 'poetic:rest-sync',
-  version: '0.0.1',
+  version: '0.0.1-rc.1',
   // Brief, one-line summary of the package.
-  summary: '',
+  summary: 'Restful data synchronization for meteor applications.',
   // URL to the Git repository containing the source code for this package.
-  git: '',
+  git: 'https://github.com/poetic/meteor-rest-sync',
   // By default, Meteor will default to using README.md for documentation.
   // To avoid submitting documentation, set this field to null.
   documentation: 'README.md'
@@ -14,16 +14,15 @@ Package.onUse(function(api) {
   api.versionsFrom('1.1.0.3');
   api.addFiles(['db-sync.js'],['server']);
   api.use([
-    'matb33:collection-hooks',
+    'matb33:collection-hooks@0.8.0',
     'http',
     'mongo',
     'underscore',
-    'percolate:synced-cron',
-    'momentjs:moment',
-    'nimble:restivus'
+    'percolate:synced-cron@1.3.0',
+    'momentjs:moment@2.10.6',
+    'nimble:restivus@0.8.4'
   ],['server']);
   api.export('DBSync');
-  api.export('Api');
 });
 
 Package.onTest(function(api) {
