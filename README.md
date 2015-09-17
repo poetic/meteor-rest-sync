@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/poetic/meteor-rest-sync.svg?branch=master)](https://travis-ci.org/poetic/meteor-rest-sync)
+
 ## Basic Requirements
 
 - A deleted_at field is required on remote and meteor side.
