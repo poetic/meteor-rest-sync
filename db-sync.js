@@ -12,6 +12,12 @@
 /*
  * Setup default for externalId inbound, with normalization
  * add behaves as syncable for simple-schema
+ *
+ * allow override of rest api?
+ *
+ * Add some default configuration stuff
+ *
+ * Merge upserts code?  Can these be more efficient?
  */
 
 DBSync = {};
@@ -30,11 +36,32 @@ DBSync.getLastUpdate = function(key){
 
 DBSync.configure = function( config ){
   this._settings =_.extend( this._settings, config );
+  
+  this._settings.restivus_options = _.defaults(config.restivus_options,{
+    apiPath: "rest-sync"
+  });
 };
 
 DBSync.addCollection = function( config ){
-  this._settings.collections[ config.collection._name ] = config;
-
+  this._settings.collections[ config.collection._name ] = _.defaults(config,{
+    "remote_external_id_field": "id",
+  });
+  
+  this._settings.collections[ config.collection._name ].mapOut = _.defaults(config.mapOut,{
+    "_id": {mapTo: "external_id"},
+    "deleted_at": {mapTo: "deleted_at"},
+    "externalId": {mapTo: "id"},
+  });
+  
+  this._settings.collections[ config.collection._name ].mapIn = _.defaults(config.mapIn,{
+    "external_id": {mapTo: "_id", mapFunc: function(val){
+      return val.toString();
+    }},
+    "id": {mapTo: "externalId"},
+    "deleted_at": {mapTo: "deleted_at"},
+    "updated_at": {mapTo: "updated_at"},
+  });
+  console.log( config.mapIn );
 };
 
 DBSync.collections = function( ){
@@ -79,7 +106,7 @@ DBSync._handleUpdate = function( key, doc, callback ){
   }else{
     var field = settings.updateDoc.field;
     var route = this._settings.remote_root + 
-      settings.updateDoc.route.replace(":id", remoteDoc[settings.external_id_field] );
+      settings.updateDoc.route.replace(":id", remoteDoc[settings.remote_external_id_field] );
 
     var params = {};
     params[field] = _.omit(remoteDoc,"id");
@@ -286,7 +313,7 @@ DBSync._handleMissingExternalIds = function( key ){
         }else{
           settings.collection.update(
             {_id: doc._id},
-            {externalId: docs[0][settings.external_id_field]}
+            {externalId: docs[0][settings.remote_external_id_field]}
           );
         }
       }
@@ -294,11 +321,9 @@ DBSync._handleMissingExternalIds = function( key ){
   });
 };
 
-DBSync._api = new Restivus({
-  useDefaultAuth: false,
-  prettyJson: true,
+DBSync._api = new Restivus(_.defaults({
   apiPath: "rest-sync"
-});
+},DBSync._settings.restivus_options));
 DBSync._setupApi = function( key ){
   var self = this;
   var settings = this.collectionSettings( key );

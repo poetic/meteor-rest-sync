@@ -1,30 +1,3 @@
-## How it works
-
-It polls the remote for all changes after a certain date.  It sends changes in realtime to specified endpoints on the remote.  If the realtime change request fails, it will retry a certain set amount of times.  Updates and inserts are done as full documents, rather than on a field by field basis.
-
-### Why External ID is needed on your remote
-
-ExternalID is required for the case where an insert was in the process when the application crashed or was shut down.  Without remote external ID we cannot know for certain if the remote system successfully inserted the document.
-
-#### Primarily realtime
-It is also necessary when the remote side sends us back an insert call when we sent it first.
-
-### Why Deleted_At is required - Primarily polling edge case
-
-We need some way to query all records that have been deleted since a certain time.  This isn't as important in the case where the remote is sending realtime changes.  It also helps with associated records.
-
-### Why we don't update last_updated if an error has occurred - Primary Polling edge case
-
-We avoid this for the rare case where a child record comes in before a parent record.  This catch's that case, and should cause the system to correct itself on the next poll.
-
-### Why fetch and retry are together - Primarily polling edge case
-
-If we are pulling data we have already recieved such as an error occuring during poll, then we need to be sure that we avoid overwriting any changes on the local side.  Passing the fetched data through the retry logic allows us to filter out records that have been updated on our side from the fetch, before updating the record on our side and overwriting local changes.  
-
-### External ID Normalization
-
-We normalize all external IDS to string.
-
 ## Basic Requirements
 
 - A deleted_at field is required on remote and meteor side.
@@ -33,30 +6,39 @@ We normalize all external IDS to string.
 
 ## Config
 
+### Base Config
+
+
+DBSync.configure({
+  remote_root: Meteor.settings.remote_sync_root,
+  max_retries: 10,
+  poll_length: 'every 1 days',
+  restivus_options: { // Passed throuw to restivus
+    use_default_auth: false
+  } 
+});
+
 ### Define each collection to sync
 
     var articleOut = {
-      "_id": {mapTo: "external_id"},
+      "_id": {mapTo: "external_id"},   // Default
       "title": {mapTo: "title"},
       "author": {mapTo: "author"},
-      "externalId": {mapTo: "id"},
-      "deleted_at": {mapTo: "deleted_at"},
+      "externalId": {mapTo: "id"},    // Default
+      "deleted_at": {mapTo: "deleted_at"},   // Default
     };
 
     var articleIn = {
-      "external_id": {mapTo: "_id", mapFunc: function(val){
-        return val.toString();
-      }},
-      "id": {mapTo: "externalId"},
+      "id": {mapTo: "externalId"},  // Default
       "title": {mapTo: "title"},
       "author": {mapTo: "author"},
-      "deleted_at": {mapTo: "deleted_at"},
-      "updated_at": {mapTo: "updated_at"},
+      "deleted_at": {mapTo: "deleted_at"},   // Default
+      "updated_at": {mapTo: "updated_at"},   // Default
     };
 
     DBSync.addCollection({ 
       collection: Articles, 
-      external_id_field: "id",
+      remote_external_id_field: "id",
       index: {
         route: "/articles.json"
       },
@@ -73,33 +55,24 @@ We normalize all external IDS to string.
     });
 
     var commentOut = {
-      "_id": {mapTo: "external_id"},
-      "externalId": {mapTo: "id"},
       "articleId": {mapTo: "article_id", mapFunc: function( val ){ return Articles.findOne({_id: val}).externalId; }},
       "title": {mapTo: "title"},
       "body": {mapTo: "body"},
       "author": {mapTo: "author"},
-      "deleted_at": {mapTo: "deleted_at"},
     };
 
     var commentIn = {
-      "external_id": {mapTo: "_id", mapFunc: function(val){
-        return val.toString();
-      }},
-      "article_id": {mapTo: "articleId", mapFunc: function( val ){ 
-        if( val ){return Articles.findOne({externalId: val})._id;} }
+      "article_id": {mapTo: "articleId", mapFunc: function( val ){ // Assume externalID is a string
+        if( val ){return Articles.findOne({externalId: val.toString()})._id;} }
       },
-      "id": {mapTo: "externalId"},
       "title": {mapTo: "title"},
       "body": {mapTo: "body"},
       "author": {mapTo: "author"},
-      "deleted_at": {mapTo: "deleted_at"},
-      "updated_at": {mapTo: "updated_at"},
     };
 
     DBSync.addCollection({ 
       collection: Comments,
-      external_id_field: "id",
+      remote_external_id_field: "id",
       index: {
         route: "/comments.json"
       },
@@ -132,3 +105,32 @@ We also setup endpoints to restfully and in realtime update our local collection
 ### 1 table to 1 collection
 
 One potentially important current limitation is a single collection on the remote equals a single collection locally.
+
+
+
+## How it works
+
+It polls the remote for all changes after a certain date.  It sends changes in realtime to specified endpoints on the remote.  If the realtime change request fails, it will retry a certain set amount of times.  Updates and inserts are done as full documents, rather than on a field by field basis.
+
+### Why External ID is needed on your remote
+
+ExternalID is required for the case where an insert was in the process when the application crashed or was shut down.  Without remote external ID we cannot know for certain if the remote system successfully inserted the document.
+
+#### Primarily realtime
+It is also necessary when the remote side sends us back an insert call when we sent it first.
+
+### Why Deleted_At is required - Primarily polling edge case
+
+We need some way to query all records that have been deleted since a certain time.  This isn't as important in the case where the remote is sending realtime changes.  It also helps with associated records.
+
+### Why we don't update last_updated if an error has occurred - Primary Polling edge case
+
+We avoid this for the rare case where a child record comes in before a parent record.  This catch's that case, and should cause the system to correct itself on the next poll.
+
+### Why fetch and retry are together - Primarily polling edge case
+
+If we are pulling data we have already recieved such as an error occuring during poll, then we need to be sure that we avoid overwriting any changes on the local side.  Passing the fetched data through the retry logic allows us to filter out records that have been updated on our side from the fetch, before updating the record on our side and overwriting local changes.  
+
+### External ID Normalization
+
+We normalize all external IDS to string.
