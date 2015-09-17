@@ -38,8 +38,6 @@ DBSync.configure = function( config ){
   this._settings.restivus_options = _.defaults({},config.restivus_options,{
     apiPath: "rest-sync"
   });
-
-  console.log( 'Settings', this._settings );
 };
 
 DBSync.addCollection = function( config ){

@@ -29,9 +29,10 @@ Package.onUse(function(api) {
 Package.onTest(function(api) {
   api.use([
     'sanjo:jasmine@0.18.0',
+    'velocity:core@0.9.3',
     'velocity:html-reporter@0.8.2',
     'pstuart2:velocity-notify@0.0.5',
-  ],'server');
+  ]);
 
   api.use([
     'percolate:synced-cron',
