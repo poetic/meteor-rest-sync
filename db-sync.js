@@ -1,28 +1,14 @@
-/*
- * Discussion
- *   Their timestamps need to be generated in DB! Lack of strict chronologic ordering from their files results in missed data.
- *
- * Technical Debt
- *   Setup CI
- *   Add more tests
- *   Refactor
- *   Migrate to differential:worker from percolate:synced-cron
- *   Add indexes
- *   Determine cause of remote problems
- *   Add ability to have some overlap in timestamps
- *   Allow configuration of inbound routes
- *
- * Packaging
- *   Add tech demo to package after stripping out nosh-pit name etc.
- */
-
-
 DBSync = {};
 
 DBSync._errors = new Mongo.Collection("syncErrors");
+DBSync._errors._ensureIndex({type: 1});
+DBSync._errors._ensureIndex({type: 1, retries: 1});
+DBSync._errors._ensureIndex({id: 1, collection: 1});
+
 DBSync._cronJobName = 'Poll remote for inserts and updates and retry inserts, updates, and deletes.';
 
 DBSync._lastUpdate = new Mongo.Collection("syncLastUpdate");
+DBSync._lastUpdate._ensureIndex({lastUpdated: 1});
 DBSync.getLastUpdate = function(key){
   var record = DBSync._lastUpdate.findOne({collection: key});
   if( record ){

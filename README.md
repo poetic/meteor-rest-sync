@@ -140,3 +140,9 @@ If we are pulling data we have already recieved such as an error occuring during
 ### External ID Normalization
 
 We normalize all external IDS to string.
+
+
+## TODO
+
+- [ ] Migrate to differential:worker
+- [ ] Allow configuration of inbound routes

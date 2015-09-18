@@ -1,0 +1,19 @@
+<template name="helloWorld">
+  <button name="resync">Resync</button>
+  Last Update: {{timestamp}}<br>
+  <button name="add-article">Add Article</button>
+
+  <br>
+  <br>
+
+  {{#each articles}}
+    <article class="article">
+      {{title}}
+      <button name="remove-article">Remove</button>
+      <button name="add-comment">Add Comment</button>
+      {{#each comments}}
+      <p>&nbsp;&nbsp;{{author}}&nbsp;{{body}}<button name="remove-comment">Remove</button></p>
+      {{/each}}
+    </article>
+  {{/each}}
+</template>
