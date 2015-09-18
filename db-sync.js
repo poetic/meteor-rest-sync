@@ -340,6 +340,7 @@ DBSync._setupApi = function( key ){
               settings.collection.direct.update({_id: meteorDoc._id}, {$set: meteorDoc} );
               return settings.collection.findOne({_id: meteorDoc._id});
             }else{
+              console.log( "here", meteorDoc );
               settings.collection.direct.update({externalId: meteorDoc.externalId}, {$set: meteorDoc} );
               return settings.collection.findOne({externalId: meteorDoc.externalId});
             }
@@ -350,8 +351,6 @@ DBSync._setupApi = function( key ){
             var req = this;
             var meteorDoc = self._convert( req.bodyParams, settings.mapIn );
             // Custom upsert, collection hooks don't allow direct access for upsert for some reason
-            
-            console.log( meteorDoc ); 
             var id;
             if( settings.collection.findOne({_id: meteorDoc._id}) ){
               settings.collection.direct.update({_id: meteorDoc._id},meteorDoc );

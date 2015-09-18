@@ -151,3 +151,93 @@ describe('Remote fetch (polling)', function () {
     expect( article.title ).toEqual( expectedTitle );
   });
 });
+
+
+describe('Restful insert received', function () {
+  describe("before externalId is entered",function(){
+    it("should correctly update document based on meteor ID",function(done){
+      var route =_.find(DBSync._api._routes,function(doc){ return doc.path === "articles"; });
+      var expectedId = 123;
+      
+      var article = {title: "Test title", author: "author"};
+      var articleId = Articles.direct.insert( article,function(){
+        article.id = expectedId;
+        article.external_id = articleId;
+
+        route.endpoints.post.bodyParams = article;
+        route.endpoints.post.action();
+
+        expect( Articles.find().count() ).toBe( 1 );
+        // We expect external ID's to be converted to string
+        expect( Articles.findOne().externalId ).toEqual( expectedId.toString() );
+        done();
+      });
+    });
+  }); 
+  
+  describe("without external_id",function(){
+    it("should correctly insert document based on remote id",function(){
+      var route =_.find(DBSync._api._routes,function(doc){ return doc.path === "articles"; });
+      var expectedId = 123;
+      var expectedTitle = "New Title";
+      
+      var article = {title: "Test title", author: "author", id:expectedId};
+      article.title = expectedTitle;
+
+      route.endpoints.post.bodyParams = article;
+      route.endpoints.post.action();
+
+      expect( Articles.find().count() ).toBe( 1 );
+      // We expect external ID's to be converted to string
+      expect( Articles.findOne().externalId ).toEqual( expectedId.toString() );
+      expect( Articles.findOne().title ).toEqual( expectedTitle );
+    });
+  });
+});
+
+describe('Restful update received', function () {
+  describe("before externalId is set",function(){
+    beforeEach(function(){
+      route =_.find(DBSync._api._routes,function(doc){ return doc.path === "articles/:id"; });
+    });
+    it("should correctly update document based on meteor ID",function(done){
+      var expectedId = 123;
+      
+      var article = {title: "Test title", author: "author"};
+      var articleId = Articles.direct.insert( article,function(){
+        console.log( "Insert complete" );
+        article.id = expectedId;
+        article.external_id = articleId;
+
+        route.endpoints.put.bodyParams = article;
+        route.endpoints.put.action();
+
+        expect( Articles.find().count() ).toBe( 1 );
+        // We expect external ID's to be converted to string
+        expect( Articles.findOne().externalId ).toEqual( expectedId.toString() );
+        done();
+      });
+    });
+  });
+  describe("without external_id",function(){
+    it("should correctly insert document based on remote id",function(done){
+      var expectedId = 123;
+      var expectedTitle = "New Title";
+      
+      var article = {title: "Test title", externalId: expectedId.toString()};
+      var articleId = Articles.direct.insert( article,function(){
+        var incoming = {title: expectedTitle, id: expectedId};
+
+        route.endpoints.put.bodyParams = incoming;
+        console.log( route.endpoints.put.action() );
+
+        expect( Articles.find().count() ).toBe( 1 );
+        // We expect external ID's to be converted to string
+        console.log( Articles.findOne() );
+        expect( Articles.findOne().externalId ).toEqual( expectedId.toString() );
+        expect( Articles.findOne().title ).toEqual( expectedTitle );
+        done();
+      });
+    });
+  });
+});
