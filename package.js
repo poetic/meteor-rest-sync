@@ -20,7 +20,8 @@ Package.onUse(function(api) {
     'underscore',
     'percolate:synced-cron@1.3.0',
     'momentjs:moment@2.10.6',
-    'nimble:restivus@0.8.4'
+    'nimble:restivus@0.8.4',
+    'underscore'
   ],['server']);
   api.export('DBSync');
 });
@@ -31,6 +32,7 @@ Package.onTest(function(api) {
     'velocity:core@0.9.3',
     'velocity:html-reporter@0.8.2',
     'pstuart2:velocity-notify@0.0.5',
+    'underscore'
   ]);
 
   api.use([
