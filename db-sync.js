@@ -241,7 +241,7 @@ DBSync.fetch = function( callback ){
     var indexUrl = self._settings.remote_root + settings.index.route;
 
     var last_updated = DBSync.getLastUpdate( key );
-    var reqObject = _.extend({data: {updated_since: last_updated}},this._settings.httpOptions)
+    var reqObject = _.extend({data: {updated_since: last_updated}},self._settings.httpOptions)
     reqObject = self._settings.requestObjTransform(reqObject);
     HTTP.get(indexUrl,reqObject,function(err,resp){
       self._handleFetch( err, resp, key, _.bind(self._runAfterFetchHooks,self) );
