@@ -58,7 +58,7 @@ DBSync.addCollection = function( config ){
 
   if( !this._settings.collections[config.collection._name].mapOutFunc ){
     this._settings.collections[config.collection._name].mapOutFunc = function( doc ){
-      self._convert( doc, self._settings.collections[ config.collection._name ].mapOut )
+      return self._convert( doc, self._settings.collections[ config.collection._name ].mapOut )
     }
   }else{
     var func = this._settings.collections[config.collection._name].mapOutFunc;
@@ -103,6 +103,7 @@ DBSync._convert = function(doc, mapping){
 DBSync._handleInsert = function( key, doc, callback ){
   var settings = this._settings.collections[ key ];
   var railsDoc = settings.mapOutFunc( doc );
+  console.log( 'rd', railsDoc )
   var field = settings.newDoc.field;
   var route = settings.newDoc.route;
 
@@ -110,7 +111,7 @@ DBSync._handleInsert = function( key, doc, callback ){
   params[field] = railsDoc;
 
   var reqObject = _.extend({data: params},this._settings.httpOptions)
-  reqObject = this._settings.requestObjTransformi( reqObject );
+  reqObject = this._settings.requestObjTransform( reqObject );
   HTTP.post(this._settings.remote_root + route, reqObject, callback);
 };
 
