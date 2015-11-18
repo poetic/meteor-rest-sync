@@ -14,13 +14,14 @@ DBSync._lastUpdate._ensureIndex({lastUpdated: 1});
 DBSync.getLastUpdate = function(key){
   var record = DBSync._lastUpdate.findOne({collection: key});
   if( record ){
-    return moment(record.lastUpdated).utc().toDate();
+    return moment(record.lastUpdated).utc().unix();
   }
 };
 
 DBSync.configure = function( config ){
   this._settings = _.defaults({},config,{
-    collections:{}
+    collections:{},
+    updatedAtField: "updatedAt"
   });
 
   this._settings.httpOptions = _.defaults({},config.httpOptions,{
@@ -38,44 +39,57 @@ DBSync.configure = function( config ){
 
 DBSync.addCollection = function( config ){
   var self = this;
-  this._settings.collections[ config.collection._name ] = _.defaults(config,{
+  let {collections, updatedAtField} = this._settings;
+  collections[ config.collection._name ] = _.defaults(config,{
     "remote_external_id_field": "id",
   });
 
-  this._settings.collections[ config.collection._name ].index = _.defaults(config.index,{
+  collections[ config.collection._name ].index = _.defaults(config.index,{
     shouldInsert: function(){ return true; },
     respToList: function(resp){ return resp; }
   });
 
 
-  if( this._settings.collections[ config.collection._name ].mapOut ){
-    this._settings.collections[ config.collection._name ].mapOut = _.defaults(config.mapOut,{
+  if( collections[ config.collection._name ].mapOut ){
+    collections[ config.collection._name ].mapOut = _.defaults(config.mapOut,{
       "_id": {mapTo: "external_id"},
-      "deleted_at": {mapTo: "deleted_at"},
+      "deletedAt": {mapTo: "deleted_at"},
       "externalId": {mapTo: "id"},
     });
   }
 
-  if( !this._settings.collections[config.collection._name].mapOutFunc ){
-    this._settings.collections[config.collection._name].mapOutFunc = function( doc ){
+  if( !collections[config.collection._name].mapOutFunc ){
+    collections[config.collection._name].mapOutFunc = function( doc ){
       return self._convert( doc, self._settings.collections[ config.collection._name ].mapOut )
     }
   }else{
-    var func = this._settings.collections[config.collection._name].mapOutFunc;
-    this._settings.collections[config.collection._name].mapOutFunc = function(doc){
+    var func = collections[config.collection._name].mapOutFunc;
+    collections[config.collection._name].mapOutFunc = function(doc){
       var newDoc = self._convert( doc, self._settings.collections[ config.collection._name ].mapOut )
       return func( doc, newDoc )
     }
   }
 
-  this._settings.collections[ config.collection._name ].mapIn = _.defaults(config.mapIn,{
+  collections[ config.collection._name ].mapIn = _.defaults(config.mapIn,{
     "external_id": {mapTo: "_id"},
     "id": {mapTo: "externalId", mapFunc: function(val){
       return val.toString();
     }},
-    "deleted_at": {mapTo: "deleted_at"},
-    "updated_at": {mapTo: "updated_at"},
+    "deleted_at": {mapTo: "deletedAt"},
+    "updated_at": {mapTo: "updatedAt"},
   });
+
+  if( !collections[config.collection._name].mapInFunc ){
+    collections[config.collection._name].mapInFunc = function( doc ){
+      return self._convert( doc, self._settings.collections[ config.collection._name ].mapIn )
+    }
+  }else{
+    var func = collections[config.collection._name].mapInFunc;
+    collections[config.collection._name].mapInFunc = function(doc){
+      var newDoc = self._convert( doc, self._settings.collections[ config.collection._name ].mapIn )
+      return func( doc, newDoc )
+    }
+  }
 };
 
 DBSync.collections = function( ){
@@ -103,7 +117,6 @@ DBSync._convert = function(doc, mapping){
 DBSync._handleInsert = function( key, doc, callback ){
   var settings = this._settings.collections[ key ];
   var railsDoc = settings.mapOutFunc( doc );
-  console.log( 'rd', railsDoc )
   var field = settings.newDoc.field;
   var route = settings.newDoc.route;
 
@@ -177,7 +190,7 @@ DBSync._handleFetch = function(err, resp, key, callback ){
     _.each( docs, function(doc){
       if( !settings.index.shouldInsert( doc ) ){ return; }
       try{
-        var meteorVersion = self._convert( doc, settings.mapIn );
+        var meteorVersion = settings.mapInFunc( doc );
 
         /*
          * If an error occured the last time we sent an update for
@@ -187,8 +200,8 @@ DBSync._handleFetch = function(err, resp, key, callback ){
         var errors = self._errors.find({collection: key, id: meteorVersion._id}).count() > 0;
         var lastUpdateLocal;
         if( errors ){
-          var updated = settings.collection.findOne({'_id': meteorVersion._id}).updated_at;
-          lastUpdateLocal = moment(updated).isAfter( meteorVersion.updated_at );
+          var updated = settings.collection.findOne({'_id': meteorVersion._id}).updatedAt;
+          lastUpdateLocal = moment(updated).isAfter( meteorVersion.updatedAt );
           console.error( "Conflicts found during fetch, most recent version used" );
         }
 
@@ -210,8 +223,16 @@ DBSync._handleFetch = function(err, resp, key, callback ){
             console.log( 'Document inserted ' + key + ' ' + id )
           }
 
-          if( !last_update || moment( meteorVersion.updated_at ).isAfter( last_update ) ){
-            last_update = moment( meteorVersion.updated_at );
+          if( meteorVersion.updatedAt ){
+            if( !last_update && meteorVersion.updatedAt ){
+              last_update = moment( meteorVersion.updatedAt );
+            }else{
+              if( moment( meteorVersion.updatedAt ).isAfter( last_update ) ){
+                last_update = moment( meteorVersion.updatedAt );
+              }
+            }
+          }else{
+            console.warn( "Updated At not found on record", meteorVersion._id )
           }
         }
       }catch(e){
@@ -377,7 +398,7 @@ DBSync._setupApi = function( key ){
       put: {
         action: function(){
           var req = this;
-          var meteorDoc = self._convert(req.bodyParams, settings.mapIn);
+          var meteorDoc = settings.mapInFunc( req.bodyPramas );
 
           // It should be one of the two cases
           if( meteorDoc._id ){
@@ -392,7 +413,7 @@ DBSync._setupApi = function( key ){
       post: {
         action: function(){
           var req = this;
-          var meteorDoc = self._convert( req.bodyParams, settings.mapIn );
+          var meteorDoc = settings.mapInFunc( req.bodyPramas );
           // Custom upsert, collection hooks don't allow direct access for upsert for some reason
           var id;
           if( settings.collection.findOne({_id: meteorDoc._id}) ){
