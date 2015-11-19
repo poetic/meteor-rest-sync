@@ -1,6 +1,6 @@
 Package.describe({
   name: 'poetic:rest-sync',
-  version: '0.0.1-rc.4',
+  version: '0.0.1-rc.5',
   // Brief, one-line summary of the package.
   summary: 'Restful data synchronization for meteor applications.',
   // URL to the Git repository containing the source code for this package.
@@ -22,7 +22,7 @@ Package.onUse(function(api) {
     'momentjs:moment@2.10.6',
     'nimble:restivus@0.8.4',
     'underscore',
-    'ecmascript@0.1.6'
+    'ecmascript@0.1.5'
   ],['server']);
   api.export('DBSync');
 });
