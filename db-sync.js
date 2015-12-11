@@ -106,7 +106,7 @@ DBSync._convert = function(doc, mapping){
   _.each(mapping,function( val,key ){
     if( doc[key] ){
       if( val.mapFunc ){
-        newDoc[ val.mapTo ] = val.mapFunc( doc[key] )
+        newDoc[ val.mapTo ] = val.mapFunc( doc[key], doc )
       }else{
         newDoc[ val.mapTo ] = doc[key];
       }
