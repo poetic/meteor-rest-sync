@@ -1,6 +1,6 @@
 Package.describe({
   name: 'poetic:rest-sync',
-  version: '0.0.1-rc.5',
+  version: '0.0.1-rc.6',
   // Brief, one-line summary of the package.
   summary: 'Restful data synchronization for meteor applications.',
   // URL to the Git repository containing the source code for this package.

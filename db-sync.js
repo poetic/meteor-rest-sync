@@ -46,7 +46,8 @@ DBSync.addCollection = function( config ){
 
   collections[ config.collection._name ].index = _.defaults(config.index,{
     shouldInsert: function(){ return true; },
-    respToList: function(resp){ return resp; }
+    respToList: function(resp){ return resp; },
+    requestObjTransform(obj){ return obj; }
   });
 
 
@@ -180,7 +181,7 @@ DBSync._handleFetch = function(err, resp, key, callback ){
   var self = this;
   var settings = self.collectionSettings(key);
   if( err ){
-    console.error( "Could not retrieve latest data from remote" );
+    console.error( "Could not retrieve latest data from remote", err );
   }else{
     var docs = JSON.parse( resp.content );
     docs = settings.index.respToList( docs );
@@ -263,8 +264,14 @@ DBSync.fetch = function( callback ){
     var indexUrl = self._settings.remote_root + settings.index.route;
 
     var last_updated = DBSync.getLastUpdate( key );
-    var reqObject = _.extend({data: {updated_since: last_updated}},self._settings.httpOptions)
+    var reqObject = {data: {}};
+    reqObject.data.order = 'updated_at';
+    if( last_updated ){
+      reqObject = _.extend(reqObject,{data: {updated_since: last_updated}})
+    }
+    reqObject = _.extend(reqObject,self._settings.httpOptions);
     reqObject = self._settings.requestObjTransform(reqObject);
+    reqObject = settings.index.requestObjTransform(reqObject);
     HTTP.get(indexUrl,reqObject,function(err,resp){
       self._handleFetch( err, resp, key, _.bind(self._runAfterFetchHooks,self) );
     });
@@ -286,27 +293,27 @@ DBSync.retryErrors = function( callback ){
   self._errors.find(
     {'type': "insert", "retries": {$lte: self._settings.max_retries}}
   ).forEach(
-  function(errRecord){
-    var settings = self.collectionSettings(errRecord.collection);
-    var doc  = settings.collection.findOne({_id: errRecord.id});
-    if( doc ){
-      self._handleInsert( errRecord.collection, doc,function(err,resp){
-        if( !err ){
-          self._errors.remove({id: errRecord.id, collection: errRecord.collection});
-          settings.collection.direct.update({_id: errRecord.id},{$set: {externalId: resp.data.id}});
-        }else{
-          self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
-          console.error( "Remote insert retry fail" );
-        }
-      });
-    }else{
-      // We remove all errors related to that record
-      // Since inserts and updates are document level, correctly processing 1
-      // will result in all other errors related to that record also being resolved.
-      self._errors.remove({_id: errRecord._id,type: "insert", collection: errRecord.collection});
-      console.log( "Doc that failed to insert on rails, no longer exists in meteor" );
+    function(errRecord){
+      var settings = self.collectionSettings(errRecord.collection);
+      var doc  = settings.collection.findOne({_id: errRecord.id});
+      if( doc ){
+        self._handleInsert( errRecord.collection, doc,function(err,resp){
+          if( !err ){
+            self._errors.remove({id: errRecord.id, collection: errRecord.collection});
+            settings.collection.direct.update({_id: errRecord.id},{$set: {externalId: resp.data.id}});
+          }else{
+            self._errors.update({_id: errRecord._id},{$inc: {retries: 1}});
+            console.error( "Remote insert retry fail" );
+          }
+        });
+      }else{
+        // We remove all errors related to that record
+        // Since inserts and updates are document level, correctly processing 1
+        // will result in all other errors related to that record also being resolved.
+        self._errors.remove({_id: errRecord._id,type: "insert", collection: errRecord.collection});
+        console.log( "Doc that failed to insert on rails, no longer exists in meteor" );
+      }
     }
-  }
   );
 
   self._errors.find(
