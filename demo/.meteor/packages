@@ -7,7 +7,7 @@
 meteor-platform
 autopublish
 insecure
-noshpit:articles
+demo:articles
 velocity:core
-noshpit:core
+demo:core
 poetic:rest-sync
